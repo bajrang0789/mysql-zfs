@@ -1,0 +1,240 @@
+---
+# to do:
+# - grant less privileages to yp user
+- hosts: msr
+  vars:
+    app: mysql
+    mysql_ebs_device: zp0/data1
+    mysql_mount_dir: /data1
+    mysql_datadir: /data1/data
+    mysql_logdir: /data1/logs
+    mysql_tmpdir: /data1/tmp
+    mysql_binlogdir: /data1/logs/binlog
+    mysql_relaylogdir: /data1/logs/relaylog
+    percona_repo: https://repo.percona.com/apt/percona-release_latest.trusty_all.deb
+    percona_server_pkg: percona-server-server-5.7
+    percona_client_pkg: percona-server-client-5.7
+    percona_toolkit_pkg: percona-toolkit
+    percona_xtradb_pkg: percona-xtrabackup-24
+
+  gather_facts: True
+
+  tasks:
+
+    - name: Add ppa zfs-native/stable repository
+      become: yes
+      become_user: root
+      apt_repository:
+        repo: ppa:zfs-native/stable
+        state: present
+        update_cache: yes
+
+    - name: Install packages
+      become: yes
+      become_user: root
+      apt:
+        name: "{{ item }}"
+        state: present
+        update_cache: yes
+  #      dpkg_options: "force-confold,force-confdef"
+      with_items:
+          - vim
+          - python-pycurl
+          - python-mysqldb
+          - python-software-properties
+          - ubuntu-zfs
+          - zfsutils
+      environment:
+          DEBIAN_FRONTEND: noninteractive
+
+#`/sbin/modprobe zfs`
+    - name: Laod ZFS Modules to RUNTIME
+      become: yes
+      become_user: root
+      command: /sbin/modprobe zfs
+
+#CREATE a ZFS File system on EBS Volume
+    - name: Create a ZFS filesystem on /dev/xvdm
+      become: yes
+      become_user: root
+      filesystem:
+        fstype: ZFS
+        dev: "{{ mysql_ebs_device }}"
+        force: yes
+
+#`zpool create -f -o autoexpand=on zp0 /dev/xvdm`
+    - name: Create autoexpand enabled ZPOOL
+      become: yes
+      become_user: root
+      command: zpool create -f -o autoexpand=on zp0 /dev/xvdm
+
+#`zfs create -o mountpoint=legacy zp0/data1`
+    - name: Create legacy mountpoint /data1 on ZPOOL zp0
+      become: yes
+      become_user: root
+      command: zfs create -o mountpoint=legacy zp0/data1
+
+#`zfs create zp0/data1/data`
+    - name: Create inherited dir /zp0/data1/data
+      become: yes
+      become_user: root
+      command: zfs create zp0/data1/data
+
+#`zfs create zp0/data1/logs`
+    - name: Create inherited dir /zp0/data1/logs
+      become: yes
+      become_user: root
+      command: zfs create zp0/data1/logs
+
+#`zfs create zp0/data1/tmp`
+    - name: Create inherited dir /zpo/data1/tmp
+      become: yes
+      become_user: root
+      command: zfs create zp0/data1/tmp
+
+#`mount -t zfs zp0/data1 /data1`
+    - name: mount ZFS fs zp0/data1 (MAIN)
+      become: yes
+      become_user: root
+      command: mount -t zfs zp0/data1 /data1
+#`zfs create -o mountpoint=/data1/data zp0/data1/data`
+#    - name: mount ZFS fs zp0/data1/data (DATA DIR)
+#      become: yes
+#      become_user: root
+#      command: zfs create -t zfs zp0/data1/data /data1/data
+
+# MOUNT EBS Volume with ZFS
+    - name: mount ebs volume
+      become: yes
+      become_user: root
+      mount:
+        path: "{{ mysql_mount_dir }}"
+        src: "{{ mysql_ebs_device }}"
+        fstype: zfs
+        opts: defaults,0,0
+        state: mounted
+
+#`/sbin/mountall`
+#    - name: Call Mount all to verify the fstab entries
+#      become: yes
+#      become_user: root
+#      command: /sbin/mountall
+
+    - name: Create mysql user
+      become: yes
+      become_user: root
+      user:
+        name: mysql
+        state: present
+
+    - name: prepare folders
+      become: yes
+      become_user: root
+      file:
+        name: "{{ item }}"
+        owner: mysql
+        group: mysql
+        state: directory
+      with_items:
+        - "{{ mysql_mount_dir }}"
+        - "{{ mysql_datadir }}"
+        - "{{ mysql_logdir }}"
+        - "{{ mysql_tmpdir }}"
+        - "{{ mysql_binlogdir }}"
+        - "{{ mysql_relaylogdir }}"
+        - "/etc/mysql"
+
+    - name: change mode for /data1/tmp
+      become: yes
+      become_user: root
+      file: dest=/data1/tmp mode=777
+
+    - name: add my.cnf
+      become: yes
+      become_user: root
+      template:
+        src: my.cnf.msr.j2
+        dest: /etc/mysql/my.cnf
+        owner: mysql
+        group: mysql
+        force: yes
+
+    - name: Add Percona repository
+      become: yes
+      become_user: root
+      apt:
+        deb: "{{ percona_repo }}"
+        state: present
+#      register: percona_repo
+#
+
+    - name: Update apt
+      become: yes
+      become_user: root
+      apt:
+        update_cache: yes
+#      when: percona_repo.changed
+#
+    - name: setup debconf-set-selections root-pass
+      become: yes
+      become_user: root
+      debconf:
+        name: percona-server-server-5.7
+        question: percona-server-server-5.7/root-pass
+        value: ''
+        vtype: password
+#      when: percona_repo.changed
+#
+    - name: setup debconf-set-selections re-root-pass
+      become: yes
+      become_user: root
+      debconf:
+        name: percona-server-server-5.7
+        question: percona-server-server-5.7/re-root-pass
+        value: ''
+        vtype: password
+#      when: percona_repo.changed
+#
+    - name: Install Percona MySQL Server & Percona xtrabackup
+      become: yes
+      become_user: root
+      apt:
+        name: "{{ item }}" #['percona-server-server-5.7', 'percona-server-client-5.7', 'percona-toolkit']
+        state: present
+        update_cache: yes
+        dpkg_options: "force-confold,force-confdef"
+      with_items:
+          - percona-server-server-5.7
+          - percona-server-client-5.7
+          - percona-toolkit
+          - percona-xtrabackup-24
+      environment:
+          DEBIAN_FRONTEND: noninteractive
+      register: percona_install
+#        when: percona_repo.changed
+#
+    - name: Create fnv1a_64
+      become: yes
+      become_user: root
+      shell: /usr/bin/mysql -e "CREATE FUNCTION fnv1a_64 RETURNS INTEGER SONAME 'libfnv1a_udf.so'" && touch /var/log/libfnv1a_udf.so.done creates=/var/log/libfnv1a_udf.so.done
+      when: percona_install.changed
+#
+    - name: Create fnv_64
+      become: yes
+      become_user: root
+      shell: /usr/bin/mysql -e "CREATE FUNCTION fnv_64 RETURNS INTEGER SONAME 'libfnv_udf.so'" && touch /var/log/libfnv_udf.so.done creates=/var/log/libfnv_udf.so.done
+      when: percona_install.changed
+#
+    - name: Create murmur_hash
+      become: yes
+      become_user: root
+      shell: /usr/bin/mysql -e "CREATE FUNCTION murmur_hash RETURNS INTEGER SONAME 'libmurmur_udf.so'" && touch /var/log/libmurmur_udf.so.done creates=/var/log/libmurmur_udf.so.done
+      when: percona_install.changed
+#
+    - name: start mysql
+      become: yes
+      become_user: root
+      service:
+        name: mysql
+        state: started
+
