@@ -60,7 +60,10 @@ zpool online -e zp0 /dev/xvdc
 ```
 At that point, the buffering partition is gone. After the next expansion, the resizing can be done without removing any partitions.
 
-##############################################################################################################################
+ZFS support is all in build from 16.04 onwards: 
+http://manpages.ubuntu.com/manpages/xenial/en/man8/mount.zfs.8.html
+
+###########################################################################################
 
 # Creation of ZPOOL:
 
@@ -166,6 +169,25 @@ xvdc    202:32   0   4.4T  0 disk
   ```
 
 3.) MySQL Config Changes: 
+
+ZFS does not support AIO on Ubuntu 14.04 so need to config MySQL not to use it for the InnoDB engine.
+Adding the following line to /etc/mysql/my.cnf:
+More details: 
+https://dev.mysql.com/doc/refman/5.7/en/innodb-linux-native-aio.html
+
+Further more, we can comment out the O_DIRECT FLUSH Method for InnoDB and disable the innodb_doublewrite buffers as ZFS is transactionally compliant and self-heals in case of any data-corruption at Block Levels. 
+The checksums are configured at ZPOOL block level.
+
+
+my.cnf :
+```
+innodb_use_native_aio           = 0
+#innodb-flush-method            = O_DIRECT
+
+innodb_doublewrite              = 0
+innodb_checksum_algorithm       = none
+```
+
 
 
 
