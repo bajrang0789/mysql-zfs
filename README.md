@@ -189,8 +189,71 @@ innodb_checksum_algorithm       = none
 ```
 
 
+# HOW TO PERFORM INCREMENTAL SNAPSHOTS with ZFS : - 
+
+To test and keep our backup snapshot we used the free nvme storage (only for the testing purpose, comes with i3.2x.large instance)
+
+1.) Create a separate Backup Pool:
+
+```zpool create -f backup /dev/nvme0n1```
+
+```
+zfs mount
+zp0                             /zp0
+zp0/mslave01                    /zp0/mslave01
+zp0/mysql                       /zp0/mysql
+zp0/mysql/data                  /data2/data
+zp0/mysql/logs                  /data2/logs
+zp0/mysql/tmp                   /data2/tmp
+backup                          /backup
+```
+
+2.) Rotate previous snapshots (and also keep one copy of snapshot in hand)
+Assuming these snapshots exist
+```
+sudo zfs destroy -r zp0/mysql@mysql002
+sudo zfs rename -r zp0/mysql@mysql001 mysql002
+```
+
+3.) Take a snapshot
 
 
+```sudo zfs snapshot -r zp0/mysql@mysql001```
+TAKE SNAPSHOTS without data-incosistency:
+```
+mysql -h127.0.0.1 -uroot --port=3310 -e 'flush tables with read lock;show master status;\! zfs snapshot -r zp0/mysql@mysql001'
+```
+
+4.) Look at the difference of this snapshot 
+```sudo zfs diff zp0/mysql@mysql001 zp0/mysql@mysql002```
+
+5.) 
+Option 1) Send to a local disk containing the /backup POOL.
+5A.1 Send that snapshot (completely) to the backup pool (first-time run)
+```
+sudo zfs send zp0/mysql@mysql001 | sudo zfs receive backup/mysql
+```
+5A.2 Send that snapshot to the backup pool, incrementally to the previous time (from the second time on)
+```
+sudo zfs send -i mysql002 zp0/mysql@mysql001 | sudo zfs receive backup/mysql
+```
+Result is that now backup/mysql is again a duplicate of zp0/mysql, up until the moment the last snapshot was taken
+
+5 
+Option 2) Send to a remote disk containing the backup/mysql POOL
+In this way, we can have the snapshot replicated to another system on a safe(r) location
+
+5B.1 Send that snapshot (completely) to the backup pool
+```
+sudo zfs send zp0/mysql@mysql001 | ssh ubuntu@10.0.32.111 sudo zfs receive backup/mysql
+```
+5B.2  Send that snapshot to the backup pool, incrementally to the previous time
+```
+sudo zfs send -i mysql002 zp0/mysql@mysql001 | ssh ubuntu@10.0.32.111 sudo zfs receive backup/mysql
+```
+
+you can find a detailed mysql snapshot script for this here: 
+https://github.com/bajrang0789/mysql-zfs/blob/master/incremental_zfs_snap.sh
 
 
 
