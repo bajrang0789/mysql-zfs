@@ -187,7 +187,16 @@ innodb_use_native_aio           = 0
 innodb_doublewrite              = 0
 innodb_checksum_algorithm       = none
 ```
-# Creation of Backup ZPOOL:
+
+# ZFS Replication
+The basis for this ZFS replication is a snapshot, we can create a snapshot at any time, and we can create as many snapshots as we like. By continually creating, transferring, and restoring snapshots, you can provide synchronization between one or more machines. ZFS provides a built-in serialization feature that can send a stream representation of the data to standard output.
+
+# Configure ZFS Replication
+In this section, I want to show you how to replicate a data set from master datapool to backuppool, but it is possible to not only store the data on another pool connected to the local system but also to send it over a network to another system. The commands used for replicating data are zfs send and zfs receive.
+
+Create another pool called backuppool.
+
+# Creation of Backup ZPOOL: (same EBS volume)
 Backup MySQL POOL is required in case we large DATA SIZE and make sure we are not choking up the same EBS Volume DISK IOPS on which the MASTER MySQL POOL is running. 
 
 To test and keep our backup snapshot we used the free nvme storage (only for the testing purpose, comes with i3.2x.large instance)
@@ -223,6 +232,75 @@ config:
 
 errors: No known data errors
 ```
+# Creation of Backup ZPOOL: (on a separate EBS volume)
+
+`zpool create backuppool mirror sde sdf`
+`zpool list`
+Output 
+```
+NAME         SIZE  ALLOC   FREE  EXPANDSZ   FRAG    CAP  DEDUP  HEALTH  ALTROOT
+backuppool  1.98G    50K  1.98G         -     0%     0%  1.00x  ONLINE  -
+datapool    1.98G   568K  1.98G         -     0%     0%  1.00x  ONLINE  -
+```
+Check the pool status:
+
+```zpool status```
+Output
+```
+  pool: datapool
+ state: ONLINE
+  scan: none requested
+config:
+
+        NAME        STATE     READ WRITE CKSUM
+        datapool    ONLINE       0     0     0
+          mirror-0  ONLINE       0     0     0
+            sdb     ONLINE       0     0     0
+            sdc     ONLINE       0     0     0
+
+errors: No known data errors
+  pool: backuppool
+ state: ONLINE
+  scan: none requested
+config:
+
+        NAME        STATE     READ WRITE CKSUM
+        backuppool    ONLINE       0     0     0
+          mirror-0  ONLINE       0     0     0
+            sde     ONLINE       0     0     0
+            sdf     ONLINE       0     0     0
+
+errors: No known data errors
+```
+Create a dataset that we'll replicate.
+```zfs snapshot datapool/docs@today```
+
+``` 
+zfs list -t snapshot
+NAME                  USED  AVAIL  REFER  MOUNTPOINT
+datapool/docs@today      0      -    19K  -
+ls /docs/
+folder1  folder2  folder3  folder4  folder5
+```
+It's time to do the replication.
+
+```
+zfs send datapool/docs@today | zfs receive backuppool/backup
+zfs list
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+backuppool           83K  1.92G    19K  /backuppool
+backuppool/backup    19K  1.92G    19K  /backuppool/backup
+datapool            527K  1.92G    19K  /datapool
+datapool/docs        19K  1.92G    19K  /docs
+ls /backuppool/backup
+folder1  folder2  folder3  folder4  folder5
+```
+The dataset datapool/docs@today has been successfully replicated to backuppool/backup.
+To replicate a dataset to another machine, we can use the command below:
+```
+ zfs send datapool/docs@today | ssh otherserver zfs recv backuppool/backup
+```
+Done.
 
 # HOW TO PERFORM INCREMENTAL SNAPSHOTS with ZFS : - 
 
@@ -449,9 +527,7 @@ Version: '5.7.24-26-log'  socket: '/data3/mysqld.sock'  port: 3312  Percona Serv
 Awesome here it comes the clone is running from ZFS ZVOL `zpo/mysql` !!
 
 
-
-
-
+Snapshot, clone, and replication are the most powerful features of ZFS. Snapshots are used to create point-in-time copies of file systems or volumes, cloning is used to create a duplicate dataset, and replication is used to replicate a dataset from one datapool to another datapool on the same machine or to replicate datapool's between different machines.
 
 
 
