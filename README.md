@@ -63,7 +63,7 @@ At that point, the buffering partition is gone. After the next expansion, the re
 ZFS support is all in build from 16.04 onwards: 
 http://manpages.ubuntu.com/manpages/xenial/en/man8/mount.zfs.8.html
 
-###########################################################################################
+##########################################################################################
 
 # Creation of ZPOOL:
 
@@ -190,6 +190,11 @@ innodb_checksum_algorithm       = none
 # Creation of Backup ZPOOL:
 Backup MySQL POOL is required in case we large DATA SIZE and make sure we are not choking up the same EBS Volume DISK IOPS on which the MASTER MySQL POOL is running. 
 
+To test and keep our backup snapshot we used the free nvme storage (only for the testing purpose, comes with i3.2x.large instance)
+
+Create backup POOL:
+```zpool create -f backup /dev/nvme0n1```
+
 we get the status of the POOL with
 ```
 ZPOOL STATUS
@@ -220,8 +225,6 @@ errors: No known data errors
 ```
 
 # HOW TO PERFORM INCREMENTAL SNAPSHOTS with ZFS : - 
-
-To test and keep our backup snapshot we used the free nvme storage (only for the testing purpose, comes with i3.2x.large instance)
 
 1.) Create a separate Backup Pool:
 
@@ -284,6 +287,138 @@ sudo zfs send -i mysql002 zp0/mysql@mysql001 | ssh ubuntu@10.0.32.111 sudo zfs r
 
 you can find a detailed mysql snapshot script for this here: 
 https://github.com/bajrang0789/mysql-zfs/blob/master/incremental_zfs_snap.sh
+
+
+
+# ZFS Clone :
+
+In order to access the ZFS Snapshot of the ZVOL, you can do so through a clone or through ZFS as a file system.
+
+Here's how: 
+
+1.) Get the list of snapshot 
+``` zfs list -t snapshot ```
+Output:
+```
+NAME                      USED  AVAIL  REFER  MOUNTPOINT
+backup/mysql@mysql002       1K      -    19K  -
+backup/mysql@mysql001       1K      -    19K  -
+zp0/mysql@mysql002           0      -    19K  -
+zp0/mysql@mysql001           0      -    19K  -
+zp0/mysql/data@mysql002      0      -  1.55M  -
+zp0/mysql/data@mysql001      0      -  1.55M  -
+zp0/mysql/logs@mysql002      0      -   309K  -
+zp0/mysql/logs@mysql001      0      -   309K  -
+zp0/mysql/tmp@mysql002       0      -    19K  -
+zp0/mysql/tmp@mysql001       0      -    19K  -
+```
+You probably wonder why the USED column reports 0B. That's simply because there were no changes to the filesystem since the snapshot was created.
+It is a measure of the amount of data that hasn't been free because the snapshot requires the data. Said otherwise, it how far the snapshot has diverged from its parent.
+
+
+2.) Use the data from snapshot: 
+
+As said we have two approach to access the data from ZFS Snapshot 
+
+a.) through ZFS filesystem:
+By default the Snapshot data is invisible, we can however change the ZFS properties for the ZVOL:
+lets try out for ZVOL : `zp0/mysql/logs` which is mouted at `/data2/logs`
+	```
+	root@msr-c1:/data2/logs# ls -alrth
+	total 291K
+	drwxr-x--- 2 mysql mysql    2 Dec 11 19:57 relaylog
+	drwxr-x--- 4 mysql mysql    6 Dec 11 20:27 .
+	-rw-r----- 1 mysql mysql  820 Dec 11 21:17 mysql-slow.log
+	drwxr-x--- 2 mysql mysql    7 Dec 11 21:17 binlog
+	drwxr-x--- 5 mysql mysql 4.0K Dec 11 21:17 ..
+	-rwxr-x--- 1 mysql mysql 4.7M Dec 11 21:17 mysql-error.log
+	```
+To access the snapshot through ZFS, you have to set the snapdir parameter to "visible, " and then you can see the files.
+	``` 
+	zfs set snapdir=visible zp0/mysql/logs
+	```
+You can see that we had two snap shots `zp0/mysql/logs@mysql001` and `zp0/mysql/logs@mysql002` for ZVOL: 	`zp0/mysql/logs`	
+	```
+	root@msr-c1:/data2/logs# ls  .zfs/
+	shares  snapshot
+	root@msr-c1:/data2/logs# ls  .zfs/snapshot/
+	mysql001  mysql002
+	root@msr-c1:/data2/logs# ls  .zfs/snapshot/mysql001/
+	binlog  mysql-error.log  mysql-slow.log  relaylog
+	root@msr-c1:/data2/logs#
+	```
+
+b.) use ZFS clone to access the data:
+The files in the snapshot directory are read-only. If you want to be able to write to the files, you first need to clone the snapshots.
+
+	```
+	root@msr-c1:/# zfs list -t snapshot
+	NAME                      USED  AVAIL  REFER  MOUNTPOINT
+	zp0/mysql@mysql001           0      -    19K  -
+	zp0/mysql/data@mysql001      0      -  1.55M  -
+	zp0/mysql/logs@mysql001      0      -   309K  -
+	```
+As we already have a mysql snaphot, we need to create a root level ZVOL (`zp0/mslave01`) similar to the mysql one we did earlier (`zp0/mysql`) 
+Here, I am using the same Zpool (zp0)
+
+	```
+	zfs create zp0/mslave01
+	```
+
+	```zfs list```
+	Output:
+	```
+	NAME             USED  AVAIL  REFER  MOUNTPOINT
+	zp0             7.10M  4.24T    19K  /zp0
+	zp0/mslave01      19K  4.24T    19K  /zp0/mslave01
+	zp0/mysql       1.87M  4.24T    19K  /zp0/mysql
+	zp0/mysql/data  1.55M  4.24T  1.55M  /data2/data
+	zp0/mysql/logs   309K  4.24T   309K  /data2/logs
+	```
+	
+3. Cloning to a new ZVOL: (`/zp0/mslave01`)
+
+Cloning mysql ZVOL using snapshot @001:
+	```
+	zfs clone zp0/mysql/data@mysql001 zp0/mslave01/data
+	zfs clone zp0/mysql/logs@mysql001 zp0/mslave01/logs
+	zfs clone zp0/mysql/tmp@mysql001  zp0/mslave01/tmp
+	```
+	
+ZFS Clone is a quick process, which makes a fork of the original data, only tracking the file meta-data and block level.
+It creates a layer on the File System and actually uses the underlying snapshot data, which only writes the new data to the clone space on File System. 
+ZFS records that haven't changed since the snapshot was taken are shared. That's huge space savings. 
+
+So, Ideally the actual data size consumed on the EBS volume doesn't grow even if you create multiple Clones from the same snapshot, unless new data is written to the created Clones.
+
+# System Overview :-
+1.) The system which I used for the MySQL on ZFS POC, is a AWS EC2 instance on i3.2x.large class.
+2.) The set up is simple, we are running multiple MySQL instances listening on different Ports. 
+3.) Port - 3306, is used as a slave MySQL instance which is actually set up as a Multi-source Replication Slave, replicating from different master DB servers. 
+4.) Port - 3310, is used as the ZFS MySQL Master instance.
+5.) Port - 3312, is used as the ZFS MySQL Cloned instance.
+6.) Port - 3306, uses a single EBS VOLUME which is in EXT4 File system.
+7.) Port - 3310 and 3312, uses a single EBS VOLUME which of ZFS Filesystem.
+8.) Detail Config can be found here: https://github.com/bajrang0789/mysql-zfs/blob/master/my.cnf
+
+
+```
+root@msr-c1:/data2/logs# service mysql status
+ * Percona Server 5.7.24-26 is running
+root@msr-c1:/data2/logs# mysqld_multi report
+Reporting MySQL (Percona Server) servers
+MySQL (Percona Server) from group: mysqld2 is running
+MySQL (Percona Server) from group: mysqld3 is not running
+```
+
+``` zfs list ```
+Output
+```
+
+```
+
+so yes the clone is up and running now. let's do a `mysqld_multi start 3` to start listening on the new Port : `3312`
+
 
 
 
