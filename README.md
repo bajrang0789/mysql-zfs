@@ -392,6 +392,7 @@ ZFS records that haven't changed since the snapshot was taken are shared. That's
 So, Ideally the actual data size consumed on the EBS volume doesn't grow even if you create multiple Clones from the same snapshot, unless new data is written to the created Clones.
 
 # System Overview :-
+```
 1.) The system which I used for the MySQL on ZFS POC, is a AWS EC2 instance on i3.2x.large class.
 2.) The set up is simple, we are running multiple MySQL instances listening on different Ports. 
 3.) Port - 3306, is used as a slave MySQL instance which is actually set up as a Multi-source Replication Slave, replicating from different master DB servers. 
@@ -400,7 +401,7 @@ So, Ideally the actual data size consumed on the EBS volume doesn't grow even if
 6.) Port - 3306, uses a single EBS VOLUME which is in EXT4 File system.
 7.) Port - 3310 and 3312, uses a single EBS VOLUME which of ZFS Filesystem.
 8.) Detail Config can be found here: https://github.com/bajrang0789/mysql-zfs/blob/master/my.cnf
-
+```
 More on mysqld_multi can be found here : https://dev.mysql.com/doc/refman/5.7/en/mysqld-multi.html
 
 ```
