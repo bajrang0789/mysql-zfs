@@ -1,7 +1,17 @@
 Things you should know about ZFS File System:
+# some context
+ZFS is a filesystem that was developed by Sun Microsystems and introduced for the first time in with OpenSolaris in 2005. ZFS is unique in many ways; let's first have a look at its code base using the sloccount tool, which provides an estimation of the development effort.
+
+In term of code base complexity, it is approaching 10 times the complexity of EXT4; the above graphic shows the scale. To put things in perspective, the sloccount development effort for Percona-Server 5.7 which is based on MySQL community 5.7, is estimated at 680 person-years. The ZoL development is sponsored by the Lawrence Livermore National Laboratory and the project is very active.
+
+ZFS on Linux, or ZoL (from the OpenZFS project), has been around for quite a long time now.
+ZFS on Linux - the official OpenZFS implementation for Linux. https://zfsonlinux.org/
+As of 2018, ZoL has been GA for more than 5 years and most of the issues that affected it in the early days have been fixed. ZFS is also GA in FreeBSD, illumos, OmniOS, and many others.
+http://open-zfs.org/wiki/Main_Page
 
 # ZFS Features
 Why does ZFS need such a large code base? Well, in Linux, it functionally replaces MD (software raid), LVM (volume manager) and the filesystem. ZFS is really a transactional database designed to support filesystem operations. Let's review the ZFS main features.
+
 
 # 128 Bits Filesystem
 That's huge! According to Jeff Bonwick, the rest energy of such a storage device would be enough to boil the oceans. It seems inconceivable that we'd ever need a larger filesystem.
