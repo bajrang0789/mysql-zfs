@@ -187,7 +187,37 @@ innodb_use_native_aio           = 0
 innodb_doublewrite              = 0
 innodb_checksum_algorithm       = none
 ```
+# Creation of Backup ZPOOL:
+Backup MySQL POOL is required in case we large DATA SIZE and make sure we are not choking up the same EBS Volume DISK IOPS on which the MASTER MySQL POOL is running. 
 
+we get the status of the POOL with
+```
+ZPOOL STATUS
+```
+Output:
+```
+  pool: backup
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	backup      ONLINE       0     0     0
+	  nvme0n1   ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: zp0
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	zp0         ONLINE       0     0     0
+	  xvdc      ONLINE       0     0     0
+
+errors: No known data errors
+```
 
 # HOW TO PERFORM INCREMENTAL SNAPSHOTS with ZFS : - 
 
