@@ -409,13 +409,42 @@ root@msr-c1:/data2/logs# mysqld_multi report
 Reporting MySQL (Percona Server) servers
 MySQL (Percona Server) from group: mysqld2 is running
 MySQL (Percona Server) from group: mysqld3 is not running
+root@msr-c1:/data2/logs# tail -n 1 /data2/logs/mysql-error.log
+Version: '5.7.24-26-log'  socket: '/data2/mysqld.sock'  port: 3310  Percona Server (GPL), Release '26', Revision 'c8fe767'
 ```
 
 ``` zfs list ```
 
 Output
+```
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+backup              108K  1.67T    19K  /backup
+backup/mysql         29K  1.67T    19K  /backup/mysql
+zp0                7.16M  4.24T    19K  /zp0
+zp0/mslave01         22K  4.24T    19K  /zp0/mslave01
+zp0/mslave01/data     1K  4.24T  1.55M  /zp0/mslave01/data
+zp0/mslave01/logs     1K  4.24T   309K  /zp0/mslave01/logs
+zp0/mslave01/tmp      1K  4.24T    19K  /zp0/mslave01/tmp
+zp0/mysql          1.89M  4.24T    19K  /zp0/mysql
+zp0/mysql/data     1.55M  4.24T  1.55M  /data2/data
+zp0/mysql/logs      309K  4.24T   309K  /data2/logs
+zp0/mysql/tmp        19K  4.24T    19K  /data2/tmp
+```
+
+Now set/change the default mount points as per config files:
+
+```
+zfs set mountpoint=/data3/data  zp0/mslave01/data
+zfs set mountpoint=/data3/logs  zp0/mslave01/logs
+zfs set mountpoint=/data3/tmp   zp0/mslave01/tmp
+```  
 
 so yes the clone is up and running now. let's do a `mysqld_multi start 3` to start listening on the new Port : `3312`
+```
+root@msr-c1:/data3/logs# tail -n 1 /data3/logs/mysql-error.log
+Version: '5.7.24-26-log'  socket: '/data3/mysqld.sock'  port: 3312  Percona Server (GPL), Release '26', Revision 'c8fe767'
+```
+Awesome here it comes the clone is running from ZFS ZVOL `zpo/mysql` !!
 
 
 
