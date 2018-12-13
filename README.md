@@ -323,67 +323,67 @@ As said we have two approach to access the data from ZFS Snapshot
 a.) through ZFS filesystem:
 By default the Snapshot data is invisible, we can however change the ZFS properties for the ZVOL:
 lets try out for ZVOL : `zp0/mysql/logs` which is mouted at `/data2/logs`
-	```
-	root@msr-c1:/data2/logs# ls -alrth
-	total 291K
-	drwxr-x--- 2 mysql mysql    2 Dec 11 19:57 relaylog
-	drwxr-x--- 4 mysql mysql    6 Dec 11 20:27 .
-	-rw-r----- 1 mysql mysql  820 Dec 11 21:17 mysql-slow.log
-	drwxr-x--- 2 mysql mysql    7 Dec 11 21:17 binlog
-	drwxr-x--- 5 mysql mysql 4.0K Dec 11 21:17 ..
-	-rwxr-x--- 1 mysql mysql 4.7M Dec 11 21:17 mysql-error.log
-	```
+```
+root@msr-c1:/data2/logs# ls -alrth
+total 291K
+drwxr-x--- 2 mysql mysql    2 Dec 11 19:57 relaylog
+drwxr-x--- 4 mysql mysql    6 Dec 11 20:27 .
+-rw-r----- 1 mysql mysql  820 Dec 11 21:17 mysql-slow.log
+drwxr-x--- 2 mysql mysql    7 Dec 11 21:17 binlog
+drwxr-x--- 5 mysql mysql 4.0K Dec 11 21:17 ..
+-rwxr-x--- 1 mysql mysql 4.7M Dec 11 21:17 mysql-error.log
+```
 To access the snapshot through ZFS, you have to set the snapdir parameter to "visible, " and then you can see the files.
-	``` 
-	zfs set snapdir=visible zp0/mysql/logs
-	```
+``` 
+zfs set snapdir=visible zp0/mysql/logs
+```
 You can see that we had two snap shots `zp0/mysql/logs@mysql001` and `zp0/mysql/logs@mysql002` for ZVOL: 	`zp0/mysql/logs`	
-	```
-	root@msr-c1:/data2/logs# ls  .zfs/
-	shares  snapshot
-	root@msr-c1:/data2/logs# ls  .zfs/snapshot/
-	mysql001  mysql002
-	root@msr-c1:/data2/logs# ls  .zfs/snapshot/mysql001/
-	binlog  mysql-error.log  mysql-slow.log  relaylog
-	root@msr-c1:/data2/logs#
-	```
+```
+root@msr-c1:/data2/logs# ls  .zfs/
+shares  snapshot
+root@msr-c1:/data2/logs# ls  .zfs/snapshot/
+mysql001  mysql002
+root@msr-c1:/data2/logs# ls  .zfs/snapshot/mysql001/
+binlog  mysql-error.log  mysql-slow.log  relaylog
+root@msr-c1:/data2/logs#
+```
 
 b.) use ZFS clone to access the data:
 The files in the snapshot directory are read-only. If you want to be able to write to the files, you first need to clone the snapshots.
 
-	```
-	root@msr-c1:/# zfs list -t snapshot
-	NAME                      USED  AVAIL  REFER  MOUNTPOINT
-	zp0/mysql@mysql001           0      -    19K  -
-	zp0/mysql/data@mysql001      0      -  1.55M  -
-	zp0/mysql/logs@mysql001      0      -   309K  -
-	```
+```
+root@msr-c1:/# zfs list -t snapshot
+NAME                      USED  AVAIL  REFER  MOUNTPOINT
+zp0/mysql@mysql001           0      -    19K  -
+zp0/mysql/data@mysql001      0      -  1.55M  -
+zp0/mysql/logs@mysql001      0      -   309K  -
+```
 As we already have a mysql snaphot, we need to create a root level ZVOL (`zp0/mslave01`) similar to the mysql one we did earlier (`zp0/mysql`) 
 Here, I am using the same Zpool (zp0)
 
-	```
-	zfs create zp0/mslave01
-	```
+```
+zfs create zp0/mslave01
+```
 
-	```zfs list```
-	Output:
-	```
-	NAME             USED  AVAIL  REFER  MOUNTPOINT
-	zp0             7.10M  4.24T    19K  /zp0
-	zp0/mslave01      19K  4.24T    19K  /zp0/mslave01
-	zp0/mysql       1.87M  4.24T    19K  /zp0/mysql
-	zp0/mysql/data  1.55M  4.24T  1.55M  /data2/data
-	zp0/mysql/logs   309K  4.24T   309K  /data2/logs
-	```
+```zfs list```
+Output:
+```
+NAME             USED  AVAIL  REFER  MOUNTPOINT
+zp0             7.10M  4.24T    19K  /zp0
+zp0/mslave01      19K  4.24T    19K  /zp0/mslave01
+zp0/mysql       1.87M  4.24T    19K  /zp0/mysql
+zp0/mysql/data  1.55M  4.24T  1.55M  /data2/data
+zp0/mysql/logs   309K  4.24T   309K  /data2/logs
+```
 	
 3. Cloning to a new ZVOL: (`/zp0/mslave01`)
 
 Cloning mysql ZVOL using snapshot @001:
-	```
-	zfs clone zp0/mysql/data@mysql001 zp0/mslave01/data
-	zfs clone zp0/mysql/logs@mysql001 zp0/mslave01/logs
-	zfs clone zp0/mysql/tmp@mysql001  zp0/mslave01/tmp
-	```
+```
+zfs clone zp0/mysql/data@mysql001 zp0/mslave01/data
+zfs clone zp0/mysql/logs@mysql001 zp0/mslave01/logs
+zfs clone zp0/mysql/tmp@mysql001  zp0/mslave01/tmp
+```
 	
 ZFS Clone is a quick process, which makes a fork of the original data, only tracking the file meta-data and block level.
 It creates a layer on the File System and actually uses the underlying snapshot data, which only writes the new data to the clone space on File System. 
