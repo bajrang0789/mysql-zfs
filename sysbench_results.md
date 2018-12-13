@@ -1,4 +1,6 @@
 
+Preparing files on the ZFS backup pool to benchmark the perf:
+sysbench fileio --file-total-size=1T --file-test-mode=rndrd --threads=16 --file-block-size=16384 prepare
 
 ```
 root@msr-c1:~/baj_scripts# zpool iostat 30
@@ -24,3 +26,11 @@ backup       203G  1.52T      0  6.20K    477   760M
 zp0         79.9M  4.37T      0      0      0      0
 ----------  -----  -----  -----  -----  -----  -----
 ```
+
+Running Test : 
+Extra file open flags: directio
+128 files, 8GiB each
+1TiB total file size
+Block size 16KiB
+
+using the custom script: https://github.com/bajrang0789/mysql-zfs/blob/master/sysbench_test_zfs.sh
