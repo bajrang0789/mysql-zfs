@@ -83,18 +83,18 @@ xvdc    202:32   0   4.4T  0 disk
 2.) Creation of Pool for MySQL usuage :
   
   i.) create root level mysql ZVOL for flexiblity of snapshots and easy management of pools.
-  ```zfs create zp0/mysql```
+  ```zfs create -o mountpoint=/data2 zp0/mysql```
   ii.) Set ZFS Properties for root level mysql ZVOL. (this property is inherited by default to all underlying ZVOL) 
   ```
   zfs set compression=gzip zp0/mysql
   zfs set recordsize=128k zp0/mysql
-  zfs set atime=off zp0/mysq
+  zfs set atime=off zp0/mysql
   ```
   iii.) create mysql ZVOL for the below ->> data ZVOL , logs ZVOL, tmp ZVOL
   ```
-  zfs create zp0/mysql/data
-  zfs create zp0/mysql/logs
-  zfs create zp0/mysql/tmp
+  zfs create -o mountpoint=/data2/data zp0/mysql/data
+  zfs create -o mountpoint=/data2/logs zp0/mysql/logs
+  zfs create -o mountpoint=/data2/tmp zp0/mysql/tmp
   ```
   iv.) Set ZFS Properties for mysql/data ZVOL
   ```
